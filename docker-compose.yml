@@ -1,0 +1,68 @@
+# docker compose up -d --build
+# Starts: Ollama (local open-source LLM) -> one-off model download -> the chatbot (API + widget + /chat page)
+# Optional HTTPS in front:  docker compose --profile https up -d   (set DOMAIN in .env)
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    # No published port: only the chatbot container can reach the model server.
+
+  ollama-pull:                       # downloads the chat + embedding models once, then exits
+    image: ollama/ollama:latest
+    depends_on:
+      ollama: { condition: service_healthy }
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_MODEL:-llama3.2} && ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}"]
+    restart: "no"
+
+  chatbot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      ollama-pull: { condition: service_completed_successfully }
+    ports:
+      - "8000:8000"
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}              # ollama | openai | anthropic | mock
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-ollama}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?Set INTERNAL_SERVICE_SECRET in .env (long random string)}
+      DEMO_MODE: ${DEMO_MODE:-0}                          # keep 0 on any public server
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}              # e.g. https://saiam.example,https://www.saiam.example
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-20}
+      ESCALATION_WEBHOOK_URL: ${ESCALATION_WEBHOOK_URL:-}
+    volumes:
+      - chatbot-data:/app/storage                         # SQLite: threads, leads, audit logs, vector index
+      - ./data/knowledge:/app/data/knowledge              # edit documents on the host, then re-ingest
+      # - ./mcp_servers.json:/app/mcp_servers.json:ro     # enable MCP client servers
+
+  caddy:                             # optional automatic HTTPS (needed if your website is https)
+    profiles: ["https"]
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [chatbot]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  ollama-models:
+  chatbot-data:
+  caddy-data:

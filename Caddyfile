@@ -1,0 +1,6 @@
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy chatbot:8000 {
+		flush_interval -1      # required so streamed (SSE) tokens are not buffered
+	}
+}

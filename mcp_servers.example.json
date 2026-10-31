@@ -1,0 +1,6 @@
+{
+  "servers": {
+    "fetch": { "command": "uvx", "args": ["mcp-server-fetch"] },
+    "shared_files": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "./data/shared"] }
+  }
+}

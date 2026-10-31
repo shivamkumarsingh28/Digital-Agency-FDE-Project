@@ -1,0 +1,15 @@
+# Core service
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+numpy>=1.26
+
+# Multi-agent orchestration (falls back to a built-in mini graph runner if absent)
+langgraph>=0.2.60
+
+# LLM providers (install the one you use; with neither, the offline "mock" mode runs)
+openai>=1.50
+anthropic>=0.40
+
+# MCP (server + client)
+mcp>=1.2

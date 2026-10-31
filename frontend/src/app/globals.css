@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+body { @apply bg-[#F7F8FC] font-body text-slate2 antialiased; }
+h1, h2, h3 { @apply font-display tracking-tight; }
+:focus-visible { outline: 3px solid #F2A900; outline-offset: 2px; }
+.btn { @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50; }
+.btn-primary { @apply bg-indigo text-white hover:bg-indigo-soft; }
+.btn-accent { @apply bg-saffron text-indigo hover:bg-[#ffbb26]; }
+.btn-ghost { @apply border border-line bg-white text-slate2 hover:bg-mist; }
+.field { @apply w-full rounded-md border border-line bg-white px-3 py-2 text-sm; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

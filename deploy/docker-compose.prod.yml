@@ -1,0 +1,19 @@
+# Single-VM production overlay:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --env-file .env.prod up -d --build
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      FILES_DOMAIN: ${FILES_DOMAIN}
+    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro", caddy_data:/data]
+    depends_on: [frontend, backend, minio]
+  db: { restart: unless-stopped }
+  minio: { restart: unless-stopped }
+  backend: { restart: unless-stopped }
+  frontend: { restart: unless-stopped }
+volumes:
+  caddy_data:

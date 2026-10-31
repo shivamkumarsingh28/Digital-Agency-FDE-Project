@@ -1,0 +1,91 @@
+# Local development stack: docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-saiam}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-saiam}
+      POSTGRES_DB: ${DB_NAME:-saiam}
+    ports: ["127.0.0.1:${DB_FORWARD_PORT:-5433}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-saiam} -d ${DB_NAME:-saiam}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis: # provisioned for session cache / rate limits / pub-sub (wired in Phase 2, see docs/ROADMAP.md)
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6379:6379"]
+
+  minio: # S3-compatible object storage for the document vault
+    image: rustfs/rustfs:latest
+    command: /data
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports: ["9000:9000", "127.0.0.1:9001:9001"]
+    volumes: [rustfsdata:/data]
+
+  minio-init: # creates the private bucket once
+    image: public.ecr.aws/aws-cli/aws-cli:latest
+    depends_on: [minio]
+    entrypoint: ["/bin/sh"]
+    command:
+      - -c
+      - |
+        until aws --endpoint-url http://minio:9000 s3api list-buckets >/dev/null 2>&1; do
+          sleep 2
+        done
+        if ! aws --endpoint-url http://minio:9000 s3api head-bucket --bucket "$$S3_BUCKET" >/dev/null 2>&1; then
+          aws --endpoint-url http://minio:9000 s3api create-bucket --bucket "$$S3_BUCKET"
+        fi
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-minioadmin}
+      AWS_DEFAULT_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:-saiam-vault}
+
+  backend:
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    environment:
+      PORT: 4000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      DB_HOST: db
+      DB_USER: ${DB_USER:-saiam}
+      DB_PASSWORD: ${DB_PASSWORD:-saiam}
+      DB_NAME: ${DB_NAME:-saiam}
+      DB_SYNC: ${DB_SYNC:-true}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_BUCKET: ${S3_BUCKET:-saiam-vault}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      SEED_PASSWORD: ${SEED_PASSWORD:-ChangeMe123!}
+    command: sh -c "node dist/seed.js && node dist/main.js"
+    ports: ["4000:4000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+    depends_on:
+      backend: { condition: service_healthy }
+    ports: ["3000:3000"]
+
+volumes:
+  pgdata:
+  rustfsdata:

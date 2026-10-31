@@ -1,0 +1,4 @@
+# Automatic HTTPS via Let's Encrypt. Point three DNS A records at the server first.
+{$APP_DOMAIN} { reverse_proxy frontend:3000 }
+{$API_DOMAIN} { reverse_proxy backend:4000 }
+{$FILES_DOMAIN} { reverse_proxy minio:9000 }
